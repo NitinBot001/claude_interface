@@ -1,8 +1,9 @@
 import ChatItem from './ChatItem';
 import { useChat } from '../../context/ChatContext';
+import { SearchX, MessageSquare } from 'lucide-react';
 
 export default function ChatHistory() {
-  const { groupedChats, loading } = useChat();
+  const { groupedChats, loading, searchResults, searchQuery } = useChat();
   const dateOrder = ['Today', 'Yesterday', 'Last 7 days', 'Older'];
 
   if (loading) {
@@ -14,6 +15,43 @@ export default function ChatHistory() {
     );
   }
 
+  // If searching, show search results
+  if (searchResults !== null) {
+    if (searchResults.length === 0) {
+      return (
+        <div className="text-center py-8 px-4">
+          <SearchX className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+          <p className="text-sm text-gray-400">No chats found</p>
+          <p className="text-xs text-gray-500 mt-1">
+            No chats matching "{searchQuery}"
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="py-2 px-2">
+        <p className="text-xs text-gray-500 px-3 py-2 font-medium uppercase tracking-wider">
+          Search Results ({searchResults.length})
+        </p>
+        <div className="space-y-0.5">
+          {searchResults.map((chat) => (
+            <div key={chat.chat_id} className="relative">
+              <ChatItem chat={chat} />
+              {chat.matchCount > 0 && (
+                <span className="absolute right-12 top-1/2 -translate-y-1/2 
+                                 text-xs text-gray-500 bg-dark-700 px-1.5 py-0.5 rounded">
+                  {chat.matchCount} {chat.matchCount === 1 ? 'match' : 'matches'}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Normal grouped view
   const hasChats = Object.values(groupedChats).some(chats => chats.length > 0);
 
   return (
@@ -38,8 +76,9 @@ export default function ChatHistory() {
 
       {!hasChats && (
         <div className="text-center py-8">
-          <p className="text-sm text-gray-500">No chats yet</p>
-          <p className="text-xs text-gray-600 mt-1">Start a new conversation</p>
+          <MessageSquare className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+          <p className="text-sm text-gray-400">No chats yet</p>
+          <p className="text-xs text-gray-500 mt-1">Start a new conversation</p>
         </div>
       )}
     </div>

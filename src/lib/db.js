@@ -1,5 +1,5 @@
 const DB_NAME = 'ClaudeChatDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Increment version for schema update
 
 const STORES = {
   MESSAGES: 'messages',
@@ -31,7 +31,6 @@ export async function openDB() {
     request.onsuccess = () => {
       dbInstance = request.result;
       
-      // Handle connection close
       dbInstance.onclose = () => {
         dbInstance = null;
       };
@@ -41,6 +40,7 @@ export async function openDB() {
 
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
+      const oldVersion = event.oldVersion;
 
       // Messages store
       if (!db.objectStoreNames.contains(STORES.MESSAGES)) {
@@ -48,7 +48,6 @@ export async function openDB() {
           keyPath: 'msg_id' 
         });
         
-        // Indexes for efficient querying
         messageStore.createIndex('by_chat', 'chat_id', { unique: false });
         messageStore.createIndex('by_parent', 'parent_msg_id', { unique: false });
         messageStore.createIndex('by_msg_index', 'msg_index', { unique: false });
@@ -63,6 +62,9 @@ export async function openDB() {
         chatStore.createIndex('by_date', 'updated_at', { unique: false });
         chatStore.createIndex('by_user', 'user_id', { unique: false });
       }
+
+      // Version 2: Added user_image field (no schema change needed for IndexedDB)
+      console.log(`Database upgraded from version ${oldVersion} to ${DB_VERSION}`);
     };
   });
 }
@@ -78,14 +80,14 @@ export async function closeDB() {
 }
 
 /**
- * Helper to normalize parent_msg_id (convert null to sentinel)
+ * Helper to normalize parent_msg_id
  */
 function normalizeParentId(parentMsgId) {
   return parentMsgId === null || parentMsgId === undefined ? ROOT_PARENT : parentMsgId;
 }
 
 /**
- * Helper to denormalize parent_msg_id (convert sentinel back to null)
+ * Helper to denormalize parent_msg_id
  */
 function denormalizeParentId(parentMsgId) {
   return parentMsgId === ROOT_PARENT ? null : parentMsgId;
@@ -97,7 +99,9 @@ function denormalizeParentId(parentMsgId) {
 function normalizeMessageForStorage(message) {
   return {
     ...message,
-    parent_msg_id: normalizeParentId(message.parent_msg_id)
+    parent_msg_id: normalizeParentId(message.parent_msg_id),
+    // Ensure user_image field exists (can be null)
+    user_image: message.user_image || null
   };
 }
 
@@ -178,7 +182,7 @@ export const MessageDB = {
     });
   },
 
-  // Get children of a message (for tree navigation)
+  // Get children of a message
   async getChildren(chatId, parentMsgId) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -190,7 +194,6 @@ export const MessageDB = {
       request.onsuccess = () => {
         const normalizedParentId = normalizeParentId(parentMsgId);
         
-        // Filter messages with matching parent
         const children = request.result
           .filter(msg => msg.parent_msg_id === normalizedParentId)
           .map(denormalizeMessageFromStorage)
@@ -202,12 +205,12 @@ export const MessageDB = {
     });
   },
 
-  // Get siblings of a message (same parent)
+  // Get siblings of a message
   async getSiblings(chatId, parentMsgId) {
     return this.getChildren(chatId, parentMsgId);
   },
 
-  // Get root messages (first messages in chat)
+  // Get root messages
   async getRootMessages(chatId) {
     return this.getChildren(chatId, null);
   },
@@ -238,12 +241,10 @@ export const MessageDB = {
 
     const children = await this.getChildren(message.chat_id, msgId);
     
-    // Recursively delete children first
     for (const child of children) {
       await this.deleteWithDescendants(child.msg_id);
     }
 
-    // Delete this message
     await this.delete(msgId);
   },
 
@@ -284,7 +285,6 @@ export const MessageDB = {
  * Chat metadata operations
  */
 export const ChatDB = {
-  // Create new chat
   async create(chat) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -304,7 +304,6 @@ export const ChatDB = {
     });
   },
 
-  // Update chat
   async update(chat) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -323,7 +322,6 @@ export const ChatDB = {
     });
   },
 
-  // Get chat by ID
   async getById(chatId) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -336,7 +334,6 @@ export const ChatDB = {
     });
   },
 
-  // Get all chats
   async getAll() {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -349,7 +346,6 @@ export const ChatDB = {
     });
   },
 
-  // Delete chat and all its messages
   async delete(chatId) {
     await MessageDB.deleteByChatId(chatId);
     
@@ -364,7 +360,6 @@ export const ChatDB = {
     });
   },
 
-  // Update chat title
   async updateTitle(chatId, title) {
     const chat = await this.getById(chatId);
     if (chat) {
@@ -374,24 +369,19 @@ export const ChatDB = {
 };
 
 /**
- * Calculate msg_index based on parent and p_order
- * Formula: parent_msg_index + (1 / 10^p_order)
+ * Calculate msg_index
  */
 export function calculateMsgIndex(parentMsgIndex, pOrder) {
-  // First message in chat (no parent)
   if (parentMsgIndex === null || parentMsgIndex === undefined) {
     return 1;
   }
   
-  // Normalize p_order
   const order = pOrder ?? 0;
-  
-  // Calculate: parent_index + (1 / 10^order)
   return parentMsgIndex + (1 / Math.pow(10, order + 1));
 }
 
 /**
- * Get the next p_order for a new child of a parent
+ * Get the next p_order for a new child
  */
 export async function getNextPOrder(chatId, parentMsgId) {
   try {
@@ -401,7 +391,6 @@ export async function getNextPOrder(chatId, parentMsgId) {
       return 0;
     }
     
-    // Find the maximum p_order among siblings
     const maxOrder = siblings.reduce((max, sibling) => {
       const order = sibling.p_order ?? 0;
       return order > max ? order : max;
@@ -415,7 +404,7 @@ export async function getNextPOrder(chatId, parentMsgId) {
 }
 
 /**
- * Clear all data (for testing/reset)
+ * Clear all data
  */
 export async function clearAllData() {
   const db = await openDB();

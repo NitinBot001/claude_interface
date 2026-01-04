@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { MessageDB, ChatDB, calculateMsgIndex, getNextPOrder } from '../lib/db';
 import { generateChatId, generateMsgId } from '../utils/uuid';
 import { buildMessageTree, getActivePath } from '../utils/treeUtils';
+import { sendChatMessageStream } from '../lib/puter';
 
 export function useChatDB() {
   const [chats, setChats] = useState([]);
@@ -12,17 +13,23 @@ export function useChatDB() {
   const [activePath, setActivePath] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState(null); // null = not searching
+  
+  // Streaming state
+  const [streamingMsgId, setStreamingMsgId] = useState(null);
+  const [streamingContent, setStreamingContent] = useState('');
 
-  // Ref to track if we should preserve selections on next load
   const preserveSelectionsRef = useRef(false);
   const pendingSelectionsRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
-  // Load all chats on mount
   useEffect(() => {
     loadChats();
   }, []);
 
-  // Load messages when chat changes
   useEffect(() => {
     if (currentChatId) {
       loadMessages(currentChatId);
@@ -34,7 +41,6 @@ export function useChatDB() {
     }
   }, [currentChatId]);
 
-  // Update active path when tree or selections change
   useEffect(() => {
     if (messageTree.tree.length > 0) {
       const path = getActivePath(messageTree.tree, selectedVersions);
@@ -44,14 +50,60 @@ export function useChatDB() {
     }
   }, [messageTree, selectedVersions]);
 
-  // Load all chats
+  // Search functionality
+  const searchChats = useCallback(async (query) => {
+    const trimmedQuery = query.trim().toLowerCase();
+    setSearchQuery(query);
+    
+    if (!trimmedQuery) {
+      setSearchResults(null);
+      return;
+    }
+
+    try {
+      const results = [];
+      
+      for (const chat of chats) {
+        // Check chat title
+        const titleMatch = chat.title?.toLowerCase().includes(trimmedQuery);
+        
+        // Check messages in this chat
+        const chatMessages = await MessageDB.getByChatId(chat.chat_id);
+        const messageMatch = chatMessages.some(msg => 
+          msg.user_msg?.toLowerCase().includes(trimmedQuery) ||
+          msg.ai_response?.toLowerCase().includes(trimmedQuery)
+        );
+        
+        if (titleMatch || messageMatch) {
+          results.push({
+            ...chat,
+            matchType: titleMatch ? 'title' : 'content',
+            matchCount: chatMessages.filter(msg => 
+              msg.user_msg?.toLowerCase().includes(trimmedQuery) ||
+              msg.ai_response?.toLowerCase().includes(trimmedQuery)
+            ).length
+          });
+        }
+      }
+      
+      setSearchResults(results);
+    } catch (err) {
+      console.error('Search error:', err);
+      setSearchResults([]);
+    }
+  }, [chats]);
+
+  const clearSearch = useCallback(() => {
+    setSearchQuery('');
+    setSearchResults(null);
+  }, []);
+
   const loadChats = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const allChats = await ChatDB.getAll();
       
-      // Sort by updated_at descending
       allChats.sort((a, b) => 
         new Date(b.updated_at) - new Date(a.updated_at)
       );
@@ -65,7 +117,6 @@ export function useChatDB() {
     }
   }, []);
 
-  // Load messages for a chat (with option to preserve selections)
   const loadMessages = useCallback(async (chatId, preserveSelections = false) => {
     try {
       setLoading(true);
@@ -78,7 +129,6 @@ export function useChatDB() {
         const tree = buildMessageTree(chatMessages);
         setMessageTree(tree);
         
-        // Apply pending selections if any
         if (pendingSelectionsRef.current) {
           setSelectedVersions(prev => ({
             ...prev,
@@ -86,11 +136,9 @@ export function useChatDB() {
           }));
           pendingSelectionsRef.current = null;
         } else if (!preserveSelections && !preserveSelectionsRef.current) {
-          // Only reset if not preserving
           setSelectedVersions({});
         }
         
-        // Reset the preserve flag
         preserveSelectionsRef.current = false;
       } else {
         setMessageTree({ tree: [], messageMap: new Map() });
@@ -106,7 +154,14 @@ export function useChatDB() {
     }
   }, []);
 
-  // Create a new chat (internal use - returns chatId)
+  // Check if current chat is empty (no messages)
+  const isCurrentChatEmpty = useCallback(async () => {
+    if (!currentChatId) return true;
+    
+    const chatMessages = await MessageDB.getByChatId(currentChatId);
+    return chatMessages.length === 0;
+  }, [currentChatId]);
+
   const createChatInternal = useCallback(async (title = 'New Chat') => {
     try {
       setError(null);
@@ -126,17 +181,25 @@ export function useChatDB() {
     }
   }, []);
 
-  // Create a new chat (external use - also sets as current)
+  // Fixed: Don't create new chat if current one is empty
   const createChat = useCallback(async (title = 'New Chat') => {
+    // Check if current chat is empty
+    const isEmpty = await isCurrentChatEmpty();
+    
+    if (isEmpty && currentChatId) {
+      // Current chat is already empty, just return it
+      return currentChatId;
+    }
+
     const chatId = await createChatInternal(title);
     if (chatId) {
       await loadChats();
       setCurrentChatId(chatId);
+      clearSearch();
     }
     return chatId;
-  }, [createChatInternal, loadChats]);
+  }, [createChatInternal, loadChats, isCurrentChatEmpty, currentChatId, clearSearch]);
 
-  // Delete a chat
   const deleteChat = useCallback(async (chatId) => {
     try {
       setError(null);
@@ -151,101 +214,163 @@ export function useChatDB() {
       }
       
       await loadChats();
+      clearSearch();
     } catch (err) {
       console.error('Failed to delete chat:', err);
       setError(err.message);
     }
-  }, [currentChatId, loadChats]);
+  }, [currentChatId, loadChats, clearSearch]);
 
-  // Send a new message (first message or reply to current path end)
-  const sendMessage = useCallback(async (userMessage, model, aiResponse) => {
+  const stopStreaming = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setStreamingMsgId(null);
+    setStreamingContent('');
+  }, []);
+
+  // Send a new message with streaming
+  const sendMessage = useCallback(async (userMessage, model, userImage = null) => {
     try {
       setError(null);
       let chatId = currentChatId;
       let isNewChat = false;
       
-      // Create chat if none exists
       if (!chatId) {
-        chatId = await createChatInternal(userMessage);
+        chatId = await createChatInternal(userMessage || 'Image conversation');
         if (!chatId) return null;
         isNewChat = true;
-        
-        // Set current chat ID immediately
         setCurrentChatId(chatId);
       }
 
-      // Capture current selections before any state changes
       const currentSelections = { ...selectedVersions };
 
-      // Determine parent and calculate index
       let parentMsgId = null;
       let parentMsgIndex = null;
       let pOrder = 0;
 
       if (activePath.length > 0) {
-        // Reply to the last message in active path
         const lastMessage = activePath[activePath.length - 1];
         parentMsgId = lastMessage.msg_id;
         parentMsgIndex = lastMessage.msg_index;
-        
-        // Get next p_order for this parent
         pOrder = await getNextPOrder(chatId, parentMsgId);
       } else if (!isNewChat) {
-        // Not a new chat but no active path - check for existing root messages
         pOrder = await getNextPOrder(chatId, null);
       }
 
       const msgIndex = calculateMsgIndex(parentMsgIndex, pOrder);
       const now = new Date().toISOString();
+      const msgId = generateMsgId();
 
       const newMessage = {
         chat_id: chatId,
-        msg_id: generateMsgId(),
+        msg_id: msgId,
         msg_index: msgIndex,
         parent_msg_id: parentMsgId,
         p_order: pOrder,
         user_msg: userMessage,
+        user_image: userImage,
         model: model,
         time_stamp_user_msg: now,
-        ai_response: aiResponse,
-        time_stamp_ai_response: now
+        ai_response: '',
+        time_stamp_ai_response: null
       };
 
       await MessageDB.add(newMessage);
-      
-      // Update chat title if first message
-      if (isNewChat) {
-        // Title already set during creation
-      } else {
-        // Just update the timestamp
-        const chat = await ChatDB.getById(chatId);
-        if (chat) {
-          await ChatDB.update(chat);
-        }
-      }
 
-      // Preserve current selections and add selection for new message
       const newSelections = { ...currentSelections };
       const parentKey = parentMsgId ?? 'root';
       newSelections[parentKey] = pOrder;
       
-      // Set pending selections to be applied after reload
       pendingSelectionsRef.current = newSelections;
       preserveSelectionsRef.current = true;
 
       await loadChats();
       await loadMessages(chatId, true);
 
-      return newMessage;
+      // Start streaming
+      setStreamingMsgId(msgId);
+      setStreamingContent('');
+
+      abortControllerRef.current = new AbortController();
+
+      try {
+        const finalResponse = await sendChatMessageStream(
+          userMessage || 'What do you see in this image?',
+          userImage,
+          {
+            model,
+            onChunk: (chunk, fullText) => {
+              setStreamingContent(fullText);
+            },
+            onStart: () => {
+              console.log('Streaming started');
+            },
+            onEnd: async (fullText) => {
+              console.log('Streaming ended');
+              
+              const updatedMessage = {
+                ...newMessage,
+                ai_response: fullText,
+                time_stamp_ai_response: new Date().toISOString()
+              };
+
+              await MessageDB.update(updatedMessage);
+              
+              if (isNewChat) {
+                const title = userMessage 
+                  ? userMessage.slice(0, 50) + (userMessage.length > 50 ? '...' : '')
+                  : 'Image conversation';
+                await ChatDB.updateTitle(chatId, title);
+              } else {
+                const chat = await ChatDB.getById(chatId);
+                if (chat) await ChatDB.update(chat);
+              }
+
+              setStreamingMsgId(null);
+              setStreamingContent('');
+
+              preserveSelectionsRef.current = true;
+              await loadChats();
+              await loadMessages(chatId, true);
+            },
+            onError: (err) => {
+              console.error('Streaming error:', err);
+            }
+          }
+        );
+
+        return newMessage;
+      } catch (apiError) {
+        console.error('AI API Error:', apiError);
+        
+        setStreamingMsgId(null);
+        setStreamingContent('');
+
+        const errorMessage = {
+          ...newMessage,
+          ai_response: `Error: ${apiError.message}`,
+          time_stamp_ai_response: new Date().toISOString()
+        };
+
+        await MessageDB.update(errorMessage);
+        preserveSelectionsRef.current = true;
+        await loadMessages(chatId, true);
+        
+        throw apiError;
+      }
     } catch (err) {
       console.error('Failed to send message:', err);
       setError(err.message);
+      setStreamingMsgId(null);
+      setStreamingContent('');
       return null;
     }
   }, [currentChatId, activePath, selectedVersions, createChatInternal, loadChats, loadMessages]);
 
-  // Edit a message (create a new sibling branch)
-  const editMessage = useCallback(async (originalMsgId, newUserMessage, model, aiResponse) => {
+  // Fixed: Edit message - close modal immediately, preserve selection
+  const editMessage = useCallback(async (originalMsgId, newUserMessage, model, userImage = null) => {
     try {
       setError(null);
       
@@ -257,7 +382,6 @@ export function useChatDB() {
       const chatId = originalMessage.chat_id;
       const parentMsgId = originalMessage.parent_msg_id;
       
-      // Get parent's msg_index
       let parentMsgIndex = null;
       if (parentMsgId) {
         const parentMessage = await MessageDB.getById(parentMsgId);
@@ -266,53 +390,110 @@ export function useChatDB() {
         }
       }
 
-      // Get next p_order among siblings
       const pOrder = await getNextPOrder(chatId, parentMsgId);
       const msgIndex = calculateMsgIndex(parentMsgIndex, pOrder);
       const now = new Date().toISOString();
+      const msgId = generateMsgId();
+
+      const imageToUse = userImage;
 
       const editedMessage = {
         chat_id: chatId,
-        msg_id: generateMsgId(),
+        msg_id: msgId,
         msg_index: msgIndex,
         parent_msg_id: parentMsgId,
         p_order: pOrder,
         user_msg: newUserMessage,
+        user_image: imageToUse,
         model: model,
         time_stamp_user_msg: now,
-        ai_response: aiResponse,
-        time_stamp_ai_response: now
+        ai_response: '',
+        time_stamp_ai_response: null
       };
 
       await MessageDB.add(editedMessage);
-      
-      // Update chat timestamp
-      const chat = await ChatDB.getById(chatId);
-      if (chat) {
-        await ChatDB.update(chat);
-      }
 
-      // Preserve current selections and update to select new branch
+      // Prepare selections for the new branch
       const currentSelections = { ...selectedVersions };
       const parentKey = parentMsgId ?? 'root';
       currentSelections[parentKey] = pOrder;
       
-      // Set pending selections
+      // Set pending selections BEFORE loading messages
       pendingSelectionsRef.current = currentSelections;
       preserveSelectionsRef.current = true;
 
+      // Load messages first to show the new message
       await loadChats();
       await loadMessages(chatId, true);
 
-      return editedMessage;
+      // Start streaming
+      setStreamingMsgId(msgId);
+      setStreamingContent('');
+
+      try {
+        await sendChatMessageStream(
+          newUserMessage || 'What do you see in this image?',
+          imageToUse,
+          {
+            model,
+            onChunk: (chunk, fullText) => {
+              setStreamingContent(fullText);
+            },
+            onEnd: async (fullText) => {
+              const updatedMessage = {
+                ...editedMessage,
+                ai_response: fullText,
+                time_stamp_ai_response: new Date().toISOString()
+              };
+
+              await MessageDB.update(updatedMessage);
+              
+              const chat = await ChatDB.getById(chatId);
+              if (chat) await ChatDB.update(chat);
+
+              setStreamingMsgId(null);
+              setStreamingContent('');
+
+              // Preserve the selection for the edited message
+              pendingSelectionsRef.current = currentSelections;
+              preserveSelectionsRef.current = true;
+              await loadChats();
+              await loadMessages(chatId, true);
+            }
+          }
+        );
+
+        return editedMessage;
+      } catch (apiError) {
+        console.error('AI API Error:', apiError);
+        
+        setStreamingMsgId(null);
+        setStreamingContent('');
+
+        const errorMessage = {
+          ...editedMessage,
+          ai_response: `Error: ${apiError.message}`,
+          time_stamp_ai_response: new Date().toISOString()
+        };
+
+        await MessageDB.update(errorMessage);
+        
+        // Still preserve selection even on error
+        pendingSelectionsRef.current = currentSelections;
+        preserveSelectionsRef.current = true;
+        await loadMessages(chatId, true);
+        
+        throw apiError;
+      }
     } catch (err) {
       console.error('Failed to edit message:', err);
       setError(err.message);
+      setStreamingMsgId(null);
+      setStreamingContent('');
       return null;
     }
   }, [selectedVersions, loadChats, loadMessages]);
 
-  // Navigate to a different version of a message
   const selectVersion = useCallback((parentMsgId, versionIndex) => {
     const parentKey = parentMsgId ?? 'root';
     setSelectedVersions(prev => ({
@@ -321,44 +502,80 @@ export function useChatDB() {
     }));
   }, []);
 
-  // Update AI response for a message
-  const updateAIResponse = useCallback(async (msgId, aiResponse) => {
+  const regenerateResponse = useCallback(async (msgId, userMessage = null, userImage = null) => {
     try {
       setError(null);
       const message = await MessageDB.getById(msgId);
       if (!message) return;
 
+      const textToUse = userMessage ?? message.user_msg;
+      const imageToUse = userImage !== undefined ? userImage : message.user_image;
+
       await MessageDB.update({
         ...message,
-        ai_response: aiResponse,
-        time_stamp_ai_response: new Date().toISOString()
+        ai_response: '',
+        time_stamp_ai_response: null
       });
 
-      // Preserve selections when updating response
       preserveSelectionsRef.current = true;
       await loadMessages(message.chat_id, true);
+
+      setStreamingMsgId(msgId);
+      setStreamingContent('');
+
+      await sendChatMessageStream(
+        textToUse || 'What do you see in this image?',
+        imageToUse,
+        {
+          model: message.model,
+          onChunk: (chunk, fullText) => {
+            setStreamingContent(fullText);
+          },
+          onEnd: async (fullText) => {
+            await MessageDB.update({
+              ...message,
+              ai_response: fullText,
+              time_stamp_ai_response: new Date().toISOString()
+            });
+
+            setStreamingMsgId(null);
+            setStreamingContent('');
+
+            preserveSelectionsRef.current = true;
+            await loadMessages(message.chat_id, true);
+          }
+        }
+      );
     } catch (err) {
-      console.error('Failed to update AI response:', err);
+      console.error('Failed to regenerate response:', err);
       setError(err.message);
+      
+      setStreamingMsgId(null);
+      setStreamingContent('');
+
+      const message = await MessageDB.getById(msgId);
+      if (message) {
+        await MessageDB.update({
+          ...message,
+          ai_response: `Error: ${err.message}`,
+          time_stamp_ai_response: new Date().toISOString()
+        });
+        preserveSelectionsRef.current = true;
+        await loadMessages(message.chat_id, true);
+      }
     }
   }, [loadMessages]);
 
-  // Regenerate AI response for a message
-  const regenerateResponse = useCallback(async (msgId, newAiResponse) => {
-    await updateAIResponse(msgId, newAiResponse);
-  }, [updateAIResponse]);
-
-  // Switch to a specific chat
   const switchChat = useCallback((chatId) => {
     if (chatId !== currentChatId) {
-      // Reset selections when switching chats
+      stopStreaming();
       setSelectedVersions({});
       setCurrentChatId(chatId);
+      clearSearch();
     }
-  }, [currentChatId]);
+  }, [currentChatId, stopStreaming, clearSearch]);
 
   return {
-    // State
     chats,
     currentChatId,
     messages,
@@ -367,16 +584,26 @@ export function useChatDB() {
     selectedVersions,
     loading,
     error,
+    
+    // Search
+    searchQuery,
+    searchResults,
+    searchChats,
+    clearSearch,
+    
+    // Streaming state
+    streamingMsgId,
+    streamingContent,
+    isStreaming: !!streamingMsgId,
 
-    // Actions
     setCurrentChatId: switchChat,
     createChat,
     deleteChat,
     sendMessage,
     editMessage,
     selectVersion,
-    updateAIResponse,
     regenerateResponse,
+    stopStreaming,
     loadChats,
     loadMessages
   };

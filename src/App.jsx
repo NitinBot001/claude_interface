@@ -5,17 +5,20 @@ function App() {
   return (
     <ChatProvider>
       <div 
-        className="flex h-screen overflow-hidden"
+        className="flex h-screen"
         style={{ backgroundColor: '#121212' }}
       >
         {/* Sidebar */}
         <Sidebar />
         
-        {/* Mobile Header */}
-        <MobileHeader />
-        
-        {/* Main Content Area */}
-        <MainContent />
+        {/* Main Area */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Mobile Header */}
+          <MobileHeader />
+          
+          {/* Main Content */}
+          <MainContent />
+        </div>
       </div>
     </ChatProvider>
   );

@@ -11,9 +11,12 @@ export { default as ChatItem } from './chat/ChatItem';
 export { default as ChatView } from './chat/ChatView';
 export { default as MessageNavigation } from './chat/MessageNavigation';
 export { default as EditMessageModal } from './chat/EditMessageModal';
+export { default as ImagePreview } from './chat/ImagePreview';
+export { default as MarkdownRenderer } from './chat/MarkdownRenderer';
 
 // UI
 export { default as Greeting } from './ui/Greeting';
 export { default as PlanBanner } from './ui/PlanBanner';
 export { default as ModelSelector } from './ui/ModelSelector';
 export { default as IconButton } from './ui/IconButton';
+export { default as ConfirmModal } from './ui/ConfirmModal';

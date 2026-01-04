@@ -1,16 +1,16 @@
 import { createContext, useContext, useState, useMemo } from 'react';
 import { useChatDB } from '../hooks/useChatDB';
+import { DEFAULT_MODEL } from '../constants/models';
 
 const ChatContext = createContext();
 
 export function ChatProvider({ children }) {
   const chatDB = useChatDB();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('Sonnet 4.5');
-  const [userName] = useState('Toy');
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
+  const [userName] = useState('User');
   const [editingMessageId, setEditingMessageId] = useState(null);
 
-  // Group chats by date for sidebar - memoized
   const groupedChats = useMemo(() => {
     return chatDB.chats.reduce((acc, chat) => {
       const chatDate = new Date(chat.updated_at || chat.created_at);
@@ -37,16 +37,13 @@ export function ChatProvider({ children }) {
     }, {});
   }, [chatDB.chats]);
 
-  // Memoize active chat
   const activeChat = useMemo(() => {
     return chatDB.chats.find(c => c.chat_id === chatDB.currentChatId) || null;
   }, [chatDB.chats, chatDB.currentChatId]);
 
   const value = {
-    // From useChatDB
     ...chatDB,
     
-    // UI State
     sidebarOpen,
     setSidebarOpen,
     selectedModel,
@@ -56,7 +53,6 @@ export function ChatProvider({ children }) {
     setEditingMessageId,
     groupedChats,
 
-    // Computed
     activeChat,
     hasMessages: chatDB.activePath.length > 0
   };

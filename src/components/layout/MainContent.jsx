@@ -9,16 +9,14 @@ export default function MainContent() {
 
   return (
     <main 
-      className="flex-1 flex flex-col min-h-screen lg:min-h-0 pt-16 lg:pt-0"
+      className="flex-1 flex flex-col min-h-0 pt-14 lg:pt-0"
       style={{ backgroundColor: '#121212' }}
     >
       {currentChatId && hasMessages ? (
-        // Chat view with messages
         <ChatView />
       ) : (
-        // Welcome view
         <div 
-          className="flex-1 flex flex-col items-center justify-center p-4 md:p-6"
+          className="flex-1 flex flex-col items-center justify-center p-4 md:p-6 overflow-auto"
           style={{ backgroundColor: '#121212' }}
         >
           <div className="w-full max-w-2xl space-y-8 md:space-y-12">
