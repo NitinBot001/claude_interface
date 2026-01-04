@@ -17,7 +17,7 @@ export function useChatDB() {
   
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState(null); // null = not searching
+  const [searchResults, setSearchResults] = useState(null);
   
   // Streaming state
   const [streamingMsgId, setStreamingMsgId] = useState(null);
@@ -65,10 +65,7 @@ export function useChatDB() {
       const results = [];
       
       for (const chat of chats) {
-        // Check chat title
         const titleMatch = chat.title?.toLowerCase().includes(trimmedQuery);
-        
-        // Check messages in this chat
         const chatMessages = await MessageDB.getByChatId(chat.chat_id);
         const messageMatch = chatMessages.some(msg => 
           msg.user_msg?.toLowerCase().includes(trimmedQuery) ||
@@ -155,13 +152,16 @@ export function useChatDB() {
     }
   }, []);
 
-  // Check if current chat is empty (no messages)
-  const isCurrentChatEmpty = useCallback(async () => {
-    if (!currentChatId) return true;
-    
-    const chatMessages = await MessageDB.getByChatId(currentChatId);
-    return chatMessages.length === 0;
-  }, [currentChatId]);
+  // ========== FIX: Find any existing empty chat ==========
+  const findEmptyChat = useCallback(async () => {
+    for (const chat of chats) {
+      const chatMessages = await MessageDB.getByChatId(chat.chat_id);
+      if (chatMessages.length === 0) {
+        return chat.chat_id;
+      }
+    }
+    return null;
+  }, [chats]);
 
   const createChatInternal = useCallback(async (title = 'New Chat') => {
     try {
@@ -182,16 +182,27 @@ export function useChatDB() {
     }
   }, []);
 
-  // Fixed: Don't create new chat if current one is empty
+  // ========== FIX: Improved createChat that reuses empty chats ==========
   const createChat = useCallback(async (title = 'New Chat') => {
-    // Check if current chat is empty
-    const isEmpty = await isCurrentChatEmpty();
-    
-    if (isEmpty && currentChatId) {
-      // Current chat is already empty, just return it
-      return currentChatId;
+    // 1. Check if current chat is already empty - just stay here
+    if (currentChatId) {
+      const currentChatMessages = await MessageDB.getByChatId(currentChatId);
+      if (currentChatMessages.length === 0) {
+        // Already in an empty chat, no need to create another
+        return currentChatId;
+      }
     }
 
+    // 2. Check if ANY empty chat already exists - navigate to it
+    const existingEmptyChatId = await findEmptyChat();
+    if (existingEmptyChatId) {
+      // Reuse the existing empty chat instead of creating a new one
+      setCurrentChatId(existingEmptyChatId);
+      clearSearch();
+      return existingEmptyChatId;
+    }
+
+    // 3. No empty chats exist - create a new one
     const chatId = await createChatInternal(title);
     if (chatId) {
       await loadChats();
@@ -199,7 +210,7 @@ export function useChatDB() {
       clearSearch();
     }
     return chatId;
-  }, [createChatInternal, loadChats, isCurrentChatEmpty, currentChatId, clearSearch]);
+  }, [createChatInternal, loadChats, currentChatId, findEmptyChat, clearSearch]);
 
   const deleteChat = useCallback(async (chatId) => {
     try {
@@ -231,7 +242,6 @@ export function useChatDB() {
     setStreamingContent('');
   }, []);
 
-  // Send a new message with streaming
   const sendMessage = useCallback(async (userMessage, model, userImage = null) => {
     try {
       setError(null);
@@ -290,7 +300,6 @@ export function useChatDB() {
       await loadChats();
       await loadMessages(chatId, true);
 
-      // Start streaming
       setStreamingMsgId(msgId);
       setStreamingContent('');
 
@@ -370,7 +379,6 @@ export function useChatDB() {
     }
   }, [currentChatId, activePath, selectedVersions, createChatInternal, loadChats, loadMessages]);
 
-  // Fixed: Edit message - close modal immediately, preserve selection
   const editMessage = useCallback(async (originalMsgId, newUserMessage, model, userImage = null) => {
     try {
       setError(null);
@@ -414,20 +422,16 @@ export function useChatDB() {
 
       await MessageDB.add(editedMessage);
 
-      // Prepare selections for the new branch
       const currentSelections = { ...selectedVersions };
       const parentKey = parentMsgId ?? 'root';
       currentSelections[parentKey] = pOrder;
       
-      // Set pending selections BEFORE loading messages
       pendingSelectionsRef.current = currentSelections;
       preserveSelectionsRef.current = true;
 
-      // Load messages first to show the new message
       await loadChats();
       await loadMessages(chatId, true);
 
-      // Start streaming
       setStreamingMsgId(msgId);
       setStreamingContent('');
 
@@ -455,7 +459,6 @@ export function useChatDB() {
               setStreamingMsgId(null);
               setStreamingContent('');
 
-              // Preserve the selection for the edited message
               pendingSelectionsRef.current = currentSelections;
               preserveSelectionsRef.current = true;
               await loadChats();
@@ -479,7 +482,6 @@ export function useChatDB() {
 
         await MessageDB.update(errorMessage);
         
-        // Still preserve selection even on error
         pendingSelectionsRef.current = currentSelections;
         preserveSelectionsRef.current = true;
         await loadMessages(chatId, true);

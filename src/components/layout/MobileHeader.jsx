@@ -27,7 +27,7 @@ export default function MobileHeader() {
           <Menu className="w-5 h-5" />
         </IconButton>
         
-        <h1 className="text-lg font-semibold text-white">Claude</h1>
+        <h1 className="text-lg font-semibold text-white">Nit-AI</h1>
         
         <IconButton 
           onClick={handleNewChat}
