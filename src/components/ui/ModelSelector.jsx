@@ -1,3 +1,4 @@
+// src/components/ui/ModelSelector.jsx
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Check, Search } from 'lucide-react';

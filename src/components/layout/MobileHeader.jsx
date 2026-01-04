@@ -1,3 +1,4 @@
+// src/components/layout/MobileHeader.jsx
 import { Menu, Plus } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import IconButton from '../ui/IconButton';

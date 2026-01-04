@@ -1,3 +1,4 @@
+// src/components/chat/ChatMessage.jsx
 import { useState } from 'react';
 import { User, Bot, Pencil, Copy, Check, RotateCcw, Image as ImageIcon, Square } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';

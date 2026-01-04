@@ -1,3 +1,4 @@
+// src/hooks/useChatDB.js
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { MessageDB, ChatDB, calculateMsgIndex, getNextPOrder } from '../lib/db';
 import { generateChatId, generateMsgId } from '../utils/uuid';

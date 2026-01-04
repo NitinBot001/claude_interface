@@ -1,3 +1,4 @@
+// src/components/chat/ImagePreview.jsx
 import { useState } from 'react';
 import { X, Image as ImageIcon, AlertCircle, ZoomIn } from 'lucide-react';
 

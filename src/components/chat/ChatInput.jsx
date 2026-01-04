@@ -1,3 +1,4 @@
+// src/components/chat/ChatInput.jsx
 import { useState, useRef } from 'react';
 import { 
   Plus, 

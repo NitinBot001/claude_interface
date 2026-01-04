@@ -1,3 +1,4 @@
+// src/components/chat/MessageNavigation.jsx
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function MessageNavigation({ 

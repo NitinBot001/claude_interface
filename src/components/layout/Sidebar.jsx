@@ -1,3 +1,4 @@
+// src/components/layout/Sidebar.jsx
 import { 
   Plus, 
   Search, 

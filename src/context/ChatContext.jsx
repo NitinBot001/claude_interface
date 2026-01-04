@@ -1,3 +1,4 @@
+// src/context/ChatContext.jsx
 import { createContext, useContext, useState, useMemo } from 'react';
 import { useChatDB } from '../hooks/useChatDB';
 import { DEFAULT_MODEL } from '../constants/models';

@@ -1,3 +1,4 @@
+//  src/components/ui/PlanBanner.jsx
 export default function PlanBanner() {
   return (
     <div className="text-xs tracking-wider flex items-center justify-center gap-2">

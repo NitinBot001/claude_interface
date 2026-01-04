@@ -1,3 +1,4 @@
+// src/components/layout/MainContent.jsx
 import { useChat } from '../../context/ChatContext';
 import PlanBanner from '../ui/PlanBanner';
 import Greeting from '../ui/Greeting';

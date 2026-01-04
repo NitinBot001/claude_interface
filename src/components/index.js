@@ -1,3 +1,4 @@
+// src/components/index.js
 // Layout
 export { default as Sidebar } from './layout/Sidebar';
 export { default as MainContent } from './layout/MainContent';

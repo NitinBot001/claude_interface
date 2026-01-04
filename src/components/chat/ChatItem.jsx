@@ -1,3 +1,4 @@
+// src/components/chat/ChatItem.jsx
 import { MessageSquare, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useChat } from '../../context/ChatContext';

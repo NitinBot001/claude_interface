@@ -1,3 +1,4 @@
+// src/components/ui/Greeting.jsx
 import { Star } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 

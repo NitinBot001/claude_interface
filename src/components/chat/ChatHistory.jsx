@@ -1,3 +1,4 @@
+// src/components/chat/ChatHistory.jsx
 import ChatItem from './ChatItem';
 import { useChat } from '../../context/ChatContext';
 import { SearchX, MessageSquare } from 'lucide-react';

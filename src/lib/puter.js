@@ -1,3 +1,4 @@
+// src/lib/puter.js
 /**
  * Puter.js AI SDK Wrapper
  * Handles multimodal chat with proper streaming JSON parsing
