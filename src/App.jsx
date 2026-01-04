@@ -1,3 +1,4 @@
+// src/App.jsx
 import { ChatProvider } from './context/ChatContext';
 import { Sidebar, MainContent, MobileHeader } from './components';
 

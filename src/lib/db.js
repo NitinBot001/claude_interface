@@ -1,3 +1,4 @@
+// src/lib/db.js
 const DB_NAME = 'ClaudeChatDB';
 const DB_VERSION = 2; // Increment version for schema update
 

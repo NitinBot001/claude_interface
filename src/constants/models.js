@@ -1,4 +1,5 @@
 // src/constants/models.js
+// List of available models grouped by provider
 export const MODELS = [
   { 
     label: "OpenAI", 
