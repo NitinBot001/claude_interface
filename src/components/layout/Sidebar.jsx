@@ -63,7 +63,7 @@ export default function Sidebar() {
           className="flex-shrink-0 p-4 flex items-center justify-between border-b border-dark-600"
           style={{ backgroundColor: '#171617' }}
         >
-          <h1 className="text-lg font-semibold text-white">Claude</h1>
+          <h1 className="text-lg font-semibold text-white">Nit-AI</h1>
           <div className="flex items-center gap-2">
             <IconButton 
               onClick={handleNewChat}

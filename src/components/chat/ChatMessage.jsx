@@ -268,7 +268,7 @@ export default function ChatMessage({ message }) {
               marginBottom: '8px',
               flexWrap: 'wrap'
             }}>
-              <span style={{ fontWeight: 600, color: '#ffffff' }}>Claude</span>
+              <span style={{ fontWeight: 600, color: '#ffffff' }}>Nit-AI</span>
               <span style={{
                 fontSize: '11px',
                 padding: '2px 8px',

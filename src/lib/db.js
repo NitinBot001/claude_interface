@@ -1,5 +1,5 @@
 // src/lib/db.js
-const DB_NAME = 'ClaudeChatDB';
+const DB_NAME = 'NitAIChatDB';
 const DB_VERSION = 2; // Increment version for schema update
 
 const STORES = {

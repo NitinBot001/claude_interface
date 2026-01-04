@@ -161,7 +161,7 @@ export default function ChatInput() {
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               onKeyDown={handleKeyDown}
-              placeholder={selectedImage ? "Add a message about this image..." : "Message Claude..."}
+              placeholder={selectedImage ? "Add a message about this image..." : "Message AI..."}
               rows={1}
               disabled={isSubmitting}
               className="w-full bg-transparent px-4 pt-3 pb-14 
@@ -255,7 +255,7 @@ export default function ChatInput() {
       <p className="text-xs text-gray-500 text-center mt-3">
         {selectedImage 
           ? 'Image attached. AI can analyze and discuss this image.'
-          : 'Claude can make mistakes. Consider checking important information.'
+          : 'AI can make mistakes. Consider checking important information.'
         }
       </p>
     </div>
