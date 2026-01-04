@@ -1,0 +1,83 @@
+import { createContext, useContext, useState, useEffect } from 'react';
+
+const ChatContext = createContext();
+
+export function ChatProvider({ children }) {
+  const [chats, setChats] = useState(() => {
+    const saved = localStorage.getItem('chats');
+    return saved ? JSON.parse(saved) : [
+      { id: 1, title: 'React Component Structure', date: 'Today', messages: [] },
+      { id: 2, title: 'API Integration Help', date: 'Today', messages: [] },
+      { id: 3, title: 'CSS Animation Tips', date: 'Yesterday', messages: [] },
+      { id: 4, title: 'Database Schema Design', date: 'Yesterday', messages: [] },
+      { id: 5, title: 'Python Best Practices', date: 'Last 7 days', messages: [] },
+    ];
+  });
+  
+  const [activeChat, setActiveChat] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('Sonnet 4.5');
+  const [userName, setUserName] = useState('Toy');
+
+  useEffect(() => {
+    localStorage.setItem('chats', JSON.stringify(chats));
+  }, [chats]);
+
+  const createNewChat = () => {
+    const newChat = {
+      id: Date.now(),
+      title: 'New Chat',
+      date: 'Today',
+      messages: [],
+    };
+    setChats(prev => [newChat, ...prev]);
+    setActiveChat(newChat.id);
+    setSidebarOpen(false);
+  };
+
+  const deleteChat = (id) => {
+    setChats(prev => prev.filter(chat => chat.id !== id));
+    if (activeChat === id) {
+      setActiveChat(null);
+    }
+  };
+
+  const addMessage = (chatId, message) => {
+    setChats(prev => prev.map(chat => {
+      if (chat.id === chatId) {
+        const messages = [...chat.messages, message];
+        const title = messages.length === 1 ? message.content.slice(0, 30) + '...' : chat.title;
+        return { ...chat, messages, title };
+      }
+      return chat;
+    }));
+  };
+
+  const value = {
+    chats,
+    activeChat,
+    setActiveChat,
+    sidebarOpen,
+    setSidebarOpen,
+    selectedModel,
+    setSelectedModel,
+    userName,
+    createNewChat,
+    deleteChat,
+    addMessage,
+  };
+
+  return (
+    <ChatContext.Provider value={value}>
+      {children}
+    </ChatContext.Provider>
+  );
+}
+
+export const useChat = () => {
+  const context = useContext(ChatContext);
+  if (!context) {
+    throw new Error('useChat must be used within a ChatProvider');
+  }
+  return context;
+};
