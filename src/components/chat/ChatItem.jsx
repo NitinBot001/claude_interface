@@ -15,7 +15,9 @@ export default function ChatItem({ chat }) {
   const isActive = currentChatId === chat.chat_id;
 
   const handleClick = () => {
-    setCurrentChatId(chat.chat_id);
+    if (currentChatId !== chat.chat_id) {
+      setCurrentChatId(chat.chat_id);
+    }
     setSidebarOpen(false);
   };
 
@@ -36,40 +38,32 @@ export default function ChatItem({ chat }) {
       onClick={handleClick}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
-      className="flex items-center gap-3 p-3 rounded-lg cursor-pointer 
-                 transition-all duration-200 group"
-      style={{ 
-        backgroundColor: isActive ? '#1E1E1E' : 'transparent'
-      }}
-      onMouseOver={(e) => {
-        if (!isActive) {
-          e.currentTarget.style.backgroundColor = '#1E1E1E';
-        }
-      }}
-      onMouseOut={(e) => {
-        if (!isActive) {
-          e.currentTarget.style.backgroundColor = 'transparent';
-        }
-      }}
+      className={`
+        flex items-center gap-3 p-3 rounded-lg cursor-pointer 
+        transition-all duration-200 group
+        ${isActive ? 'bg-dark-700' : 'hover:bg-dark-700'}
+      `}
+      style={{ backgroundColor: isActive ? '#1E1E1E' : undefined }}
     >
       <MessageSquare className="w-4 h-4 text-gray-500 flex-shrink-0" />
       <span className="flex-1 text-sm text-gray-300 truncate">
-        {chat.title}
+        {chat.title || 'New Chat'}
       </span>
       
-      {showActions && (
+      {showActions && !isDeleting && (
         <button
           onClick={handleDelete}
-          disabled={isDeleting}
-          className={`p-1.5 rounded-md transition-colors ${
-            isDeleting 
-              ? 'text-gray-600' 
-              : 'text-gray-500 hover:text-red-400'
-          }`}
+          className="p-1.5 rounded-md text-gray-500 
+                     hover:text-red-400 transition-colors"
           style={{ backgroundColor: '#3A3A3A' }}
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>
+      )}
+      
+      {isDeleting && (
+        <div className="w-3.5 h-3.5 border-2 border-gray-500 border-t-transparent 
+                        rounded-full animate-spin" />
       )}
     </div>
   );
